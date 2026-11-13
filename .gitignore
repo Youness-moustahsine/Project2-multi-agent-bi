@@ -1,0 +1,33 @@
+.venv/
+.env
+__pycache__/
+data/*.db
+.pytest_cache/
+
+# Security and generated files
+.env
+.env.*
+!.env.example
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+node_modules/
+.DS_Store
+.idea/
+*.log
+*.egg-info/
+
+# Security and generated files
+.env
+.env.*
+!.env.example
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+node_modules/
+.DS_Store
+.idea/
+*.log
+*.egg-info/

@@ -1,0 +1,9 @@
+Contexte. Dans une entreprise, un manager qui veut une réponse chiffrée (évolution du chiffre d’affaires, produits qui déclinent, clients clés) doit passer par un analyste, du SQL ou des tableaux de bord figés. Un simple chatbot, lui, répond sans accès aux vraies données.
+
+Objectif. Concevoir un système multi-agents où l’on pose une question business en langage naturel et où l’on obtient une réponse chiffrée, des graphiques et des recommandations.
+
+Valeur ajoutée. Chaque agent a un rôle précis, et tout est traçable : chaque résultat est affiché avec la requête SQL qui l’a produit. L’accès à la base est sécurisé (lecture seule, SELECT uniquement). L’agent SQL se corrige tout seul : dans mes tests, il a interrogé un jeu de données comme une table, a reçu l’erreur de SQLite, puis a réécrit sa requête.
+
+Mécanisme. Un superviseur planifie et appelle les agents. L’agent SQL explore le schéma et construit des jeux de données par function calling. L’analyste calcule des statistiques. Un agent de prévision applique une tendance avec saisonnalité, un intervalle d’incertitude et un backtest. Le Business Advisor rédige la réponse et les recommandations priorisées.
+
+Technologies. Python, API Groq avec des modèles Llama (tool calling), FastAPI, SQLite, une interface web avec logs en direct et graphiques Chart.js, et des tests pytest avec un LLM simulé.

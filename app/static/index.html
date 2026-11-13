@@ -1,0 +1,128 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Multi-Agent Business Intelligence</title>
+<script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<style>
+  :root { --bg:#0f1115; --card:#181b22; --fg:#e6e8ee; --mut:#8b93a7; --acc:#6aa7ff; --bd:#2a2f3a; --ok:#4cc38a; --warn:#e0a800; }
+  @media (prefers-color-scheme: light) { :root { --bg:#f5f6f8; --card:#fff; --fg:#16181d; --mut:#5b6475; --acc:#1f6feb; --bd:#d9dde5; --ok:#1a9560; --warn:#b07d00; } }
+  * { box-sizing:border-box; }
+  body { margin:0; font-family:system-ui,Segoe UI,sans-serif; background:var(--bg); color:var(--fg); }
+  main { max-width:1200px; margin:0 auto; padding:24px; display:grid; gap:16px; grid-template-columns:minmax(0,1fr) minmax(0,1.3fr); }
+  h1 { grid-column:1/-1; margin:0; font-size:22px; }
+  .card { background:var(--card); border:1px solid var(--bd); border-radius:10px; padding:16px; min-width:0; }
+  .full { grid-column:1/-1; }
+  form { display:flex; gap:8px; flex-wrap:wrap; }
+  input, select, button { font:inherit; padding:10px 12px; border-radius:8px; border:1px solid var(--bd); background:var(--bg); color:var(--fg); }
+  input { flex:1; min-width:240px; }
+  button { background:var(--acc); color:#fff; border:none; cursor:pointer; }
+  button:disabled { opacity:.5; cursor:wait; }
+  .chips { margin-top:10px; display:flex; gap:6px; flex-wrap:wrap; }
+  .chip { font-size:12px; padding:5px 9px; border-radius:999px; background:transparent; color:var(--mut); border:1px solid var(--bd); }
+  #log { font-family:ui-monospace,Consolas,monospace; font-size:12.5px; max-height:480px; overflow:auto; margin-top:8px; }
+  #log div { padding:3px 0; border-bottom:1px dashed var(--bd); }
+  .ag { display:inline-block; min-width:78px; font-weight:700; }
+  .ag.supervisor { color:var(--warn); } .ag.sql { color:var(--acc); } .ag.analyst { color:var(--ok); }
+  .ag.forecast { color:#c084fc; } .ag.advisor { color:#ff8fab; }
+  .kd { color:var(--mut); }
+  .kd.error { color:#ff6b6b; }
+  #answer { line-height:1.6; }
+  #answer h1,#answer h2,#answer h3 { font-size:16px; margin:14px 0 6px; }
+  canvas { max-height:260px; }
+  .charts { display:grid; gap:12px; grid-template-columns:repeat(auto-fit,minmax(300px,1fr)); margin-top:10px; }
+  details { margin-top:8px; font-size:13px; } summary { cursor:pointer; color:var(--mut); }
+  table { border-collapse:collapse; width:100%; font-size:12px; display:block; overflow-x:auto; }
+  td, th { border:1px solid var(--bd); padding:4px 8px; text-align:left; white-space:nowrap; }
+  pre { overflow-x:auto; font-size:12px; }
+  @media (max-width:850px) { main { grid-template-columns:1fr; } }
+</style>
+</head>
+<body>
+<main>
+  <h1>Multi-Agent Business Intelligence</h1>
+  <div class="card full">
+    <form id="f">
+      <input id="q" placeholder="Pose une question business sur les ventes…" required>
+      <select id="lang"><option value="fr">Français</option><option value="en">English</option><option value="ar">العربية</option></select>
+      <button id="go">Analyser</button>
+    </form>
+    <div class="chips" id="chips"></div>
+  </div>
+  <div class="card"><b>Équipe d'agents</b> <span id="plan" style="color:var(--mut)"></span><div id="log"></div></div>
+  <div class="card"><b>Réponse du Business Advisor</b><div id="answer">En attente d'une question…</div></div>
+  <div class="card full" id="viz" style="display:none"><b>Données et prévisions</b><div class="charts" id="charts"></div><div id="tables"></div></div>
+</main>
+<script>
+const $ = id => document.getElementById(id);
+const EX = [
+  "Quelle est l'évolution du chiffre d'affaires mensuel et quelle prévision pour les 6 prochains mois ?",
+  "Quelles catégories de produits croissent ou déclinent le plus vite ?",
+  "Quels sont les 5 meilleurs clients et quelle région génère le plus de marge ?",
+  "Quel canal de vente est le plus rentable ? Que recommandes-tu ?"];
+EX.forEach(t => { const b = document.createElement('button'); b.type = 'button'; b.className = 'chip'; b.textContent = t;
+  b.onclick = () => { $('q').value = t; }; $('chips').append(b); });
+
+let charts = [];
+function mkChart(parent, title, cfg) {
+  const box = document.createElement('div'); const cv = document.createElement('canvas'); box.append(cv); parent.append(box);
+  cfg.options = Object.assign({ responsive:true, plugins:{ title:{ display:true, text:title } } }, cfg.options || {});
+  charts.push(new Chart(cv, cfg));
+}
+function render(j) {
+  $('viz').style.display = 'block'; $('charts').innerHTML = ''; $('tables').innerHTML = '';
+  charts.forEach(c => c.destroy()); charts = [];
+  for (const [name, f] of Object.entries(j.forecasts || {})) {
+    const labels = f.labels.concat(f.future_labels), n = f.history.length, pad = Array(n - 1).fill(null);
+    mkChart($('charts'), `Prévision — ${f.column} (${f.method}, MAPE ${f.mape ?? 'n/a'}%)`, { type:'line', data:{ labels, datasets:[
+      { label:'Historique', data:f.history, borderColor:'#6aa7ff', tension:.25 },
+      { label:'Prévision', data:pad.concat([f.history[n-1]], f.forecast.map(p => p.value)), borderColor:'#c084fc', borderDash:[6,4], tension:.25 },
+      { label:'Borne haute', data:pad.concat([null], f.forecast.map(p => p.high)), borderColor:'rgba(192,132,252,.35)', pointRadius:0 },
+      { label:'Borne basse', data:pad.concat([null], f.forecast.map(p => p.low)), borderColor:'rgba(192,132,252,.35)', pointRadius:0 }] } });
+  }
+  let shown = 0;
+  for (const [name, d] of Object.entries(j.datasets || {})) {
+    const last = d.columns.length - 1, nums = d.rows.filter(r => typeof r[last] === 'number');
+    if (!j.forecasts[name] && nums.length >= 3 && shown < 3) { shown++;
+      mkChart($('charts'), `${name} — ${d.columns[last]}`, { type:'bar', data:{ labels:nums.map(r => String(r[0])),
+        datasets:[{ label:d.columns[last], data:nums.map(r => r[last]), backgroundColor:'#6aa7ff' }] }, options:{ plugins:{ legend:{ display:false }, title:{ display:true, text:`${name} — ${d.columns[last]}` } } } });
+    }
+    const det = document.createElement('details');
+    const sum = document.createElement('summary'); sum.textContent = `${name} (${d.rows.length} lignes) — voir la requête SQL`;
+    const pre = document.createElement('pre'); pre.textContent = d.sql;
+    const tbl = document.createElement('table');
+    tbl.innerHTML = '<tr>' + d.columns.map(c => '<th></th>').join('') + '</tr>';
+    tbl.querySelectorAll('th').forEach((th, i) => th.textContent = d.columns[i]);
+    d.rows.slice(0, 10).forEach(r => { const tr = document.createElement('tr');
+      r.forEach(v => { const td = document.createElement('td'); td.textContent = v; tr.append(td); }); tbl.append(tr); });
+    det.append(sum, pre, tbl); $('tables').append(det);
+  }
+}
+$('f').onsubmit = async e => {
+  e.preventDefault(); $('go').disabled = true; $('log').innerHTML = ''; $('plan').textContent = '';
+  $('answer').textContent = 'Les agents travaillent…'; $('viz').style.display = 'none';
+  const r = await fetch('/api/ask', { method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({ question:$('q').value, lang:$('lang').value }) });
+  const { job_id } = await r.json(); let shown = 0;
+  const timer = setInterval(async () => {
+    const j = await (await fetch('/api/jobs/' + job_id)).json();
+    j.events.slice(shown).forEach(ev => {
+      const d = document.createElement('div');
+      const a = document.createElement('span'); a.className = 'ag ' + ev.agent; a.textContent = ev.agent;
+      const k = document.createElement('span'); k.className = 'kd ' + ev.kind; k.textContent = ' ' + ev.kind + ' ';
+      d.append(a, k, document.createTextNode(ev.msg)); $('log').append(d);
+      if (ev.kind === 'plan') $('plan').textContent = '— ' + ev.msg;
+    });
+    shown = j.events.length; $('log').scrollTop = 1e9;
+    if (j.status !== 'running') {
+      clearInterval(timer); $('go').disabled = false;
+      if (j.status === 'done') { $('answer').innerHTML = marked.parse(j.answer); render(j); }
+      else $('answer').textContent = 'Erreur : ' + j.error;
+    }
+  }, 1500);
+};
+</script>
+</body>
+</html>
